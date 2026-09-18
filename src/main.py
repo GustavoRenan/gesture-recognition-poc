@@ -50,15 +50,18 @@ with mp_hands.Hands(
                 x1, y1 = int(index_finger.x * frame_w), int(index_finger.y * frame_h)
                 x2, y2 = int(thumb.x * frame_w), int(thumb.y * frame_h)
 
-                # Converte pixels da câmera para a tela do PC
-                screen_x = np.interp(x1, [0, frame_w], [0, screen_w])
-                screen_y = np.interp(y1, [0, frame_h], [0, screen_h])
-
                 # Suaviza o movimento
                 clocX = plocX + (screen_x - plocX) / smoothening
                 clocY = plocY + (screen_y - plocY) / smoothening
 
-                pyautogui.moveTo(clocX, clocY)
+                # Converte para número inteiro (exigência rigorosa de alguns sistemas X11)
+                x_final = int(clocX)
+                y_final = int(clocY)
+
+                # Imprime no terminal para sabermos se o cálculo está acontecendo
+                print(f"Tentando mover o mouse para: X={x_final}, Y={y_final}")
+
+                pyautogui.moveTo(x_final, y_final)
                 plocX, plocY = clocX, clocY
 
                 # Clique: mede a distância entre indicador e polegar
