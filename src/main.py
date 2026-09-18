@@ -2,10 +2,13 @@ import cv2
 import mediapipe as mp
 import pyautogui
 import math
+import numpy as np
 from collections import deque
 
 # Desativa a trava de segurança caso o mouse vá para o canto da tela acidentalmente
 pyautogui.FAILSAFE = False
+
+# ... (o resto do código continua igual)
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
