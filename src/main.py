@@ -1,46 +1,24 @@
 import cv2
 import mediapipe as mp
+import pyautogui
+import math
 from collections import deque
+
+# Desativa a trava de segurança caso o mouse vá para o canto da tela acidentalmente
+pyautogui.FAILSAFE = False
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
 cap = cv2.VideoCapture(0)
 
-def get_finger_states(hand_landmarks):
-    tips = [4, 8, 12, 16, 20]
-    pip = [3, 6, 10, 14, 18]
+# Pega a resolução exata do seu monitor dinamicamente
+screen_w, screen_h = pyautogui.size()
 
-    fingers = []
-
-    # Polegar (eixo X)
-    fingers.append(
-        hand_landmarks.landmark[tips[0]].x >
-        hand_landmarks.landmark[pip[0]].x
-    )
-
-    # Outros dedos (eixo Y)
-    for i in range(1, 5):
-        fingers.append(
-            hand_landmarks.landmark[tips[i]].y <
-            hand_landmarks.landmark[pip[i]].y
-        )
-
-    return fingers
-
-def classify_gesture(fingers):
-    if fingers == [True, True, True, True, True]:
-        return "Mao Aberta"
-
-    if fingers == [False, False, False, False, False]:
-        return "Punho Fechado"
-
-    if fingers == [True, False, False, False, False]:
-        return "Polegar Para Cima"
-
-    return "Gesto Desconhecido"
-
-gesture_history = deque(maxlen=5)
+# Variáveis para suavização do movimento do mouse
+smoothening = 5
+plocX, plocY = 0, 0
+clocX, clocY = 0, 0
 
 with mp_hands.Hands(
     static_image_mode=False,
@@ -54,44 +32,51 @@ with mp_hands.Hands(
         if not success:
             break
 
+        # Espelha o frame para não bugar a coordenação motora
+        frame = cv2.flip(frame, 1)
+        frame_h, frame_w, _ = frame.shape
+        
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(frame_rgb)
 
-        gesture = "Nenhum"
-
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                mp_draw.draw_landmarks(
-                    frame,
-                    hand_landmarks,
-                    mp_hands.HAND_CONNECTIONS
-                )
+                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-                fingers = get_finger_states(hand_landmarks)
-                current_gesture = classify_gesture(fingers)
+                # Extrai as coordenadas do Dedo Indicador (ponta = 8) e Polegar (ponta = 4)
+                index_finger_tip = hand_landmarks.landmark[8]
+                thumb_tip = hand_landmarks.landmark[4]
 
-                gesture_history.append(current_gesture)
+                # Converte as coordenadas relativas do MediaPipe para pixels da câmera
+                x1, y1 = int(index_finger_tip.x * frame_w), int(index_finger_tip.y * frame_h)
+                x2, y2 = int(thumb_tip.x * frame_w), int(thumb_tip.y * frame_h)
 
-                gesture = max(
-                    set(gesture_history),
-                    key=gesture_history.count
-                )
+                # Converte os pixels da câmera para a proporção do seu monitor
+                screen_x = np.interp(x1, [0, frame_w], [0, screen_w])
+                screen_y = np.interp(y1, [0, frame_h], [0, screen_h])
 
-        cv2.putText(
-            frame,
-            gesture,
-            (30, 50),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (0, 255, 0),
-            2
-        )
+                # Aplica a suavização para não tremer no monitor
+                clocX = plocX + (screen_x - plocX) / smoothening
+                clocY = plocY + (screen_y - plocY) / smoothening
 
-        cv2.imshow("Gesture Classification", frame)
+                # Move o mouse
+                pyautogui.moveTo(clocX, clocY)
+                plocX, plocY = clocX, clocY
+
+                # Lógica de Clique: Calcula a distância entre o polegar e o indicador
+                distance = math.hypot(x2 - x1, y2 - y1)
+                
+                # Se os dedos encostarem (distância menor que 30 pixels), executa o clique
+                if distance < 30:
+                    cv2.circle(frame, (x1, y1), 15, (0, 255, 0), cv2.FILLED)
+                    pyautogui.click()
+                    # Pequeno delay para evitar cliques duplos/múltiplos acidentais
+                    cv2.waitKey(250)
+
+        cv2.imshow("Tony Stark POC - Controle de Mouse", frame)
 
         if cv2.waitKey(1) & 0xFF == 27:
             break
 
 cap.release()
 cv2.destroyAllWindows()
-
